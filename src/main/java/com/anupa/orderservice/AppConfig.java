@@ -1,4 +1,4 @@
-package com.egov.profileservice;
+package com.anupa.orderservice;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.netflix.eureka.EurekaDiscoveryClient;
@@ -25,6 +25,22 @@ public class AppConfig
 
         return webClientBuilder
                 .baseUrl(String.format("http://%s:%s/api/v1/validate", "localhost", "8085"))
+                .filter(new LoggingWebClientFilter())
+                .build();
+    }
+
+    @Bean
+    @Scope("prototype")
+    public WebClient paymentCreateWebClient(WebClient.Builder webClientBuilder)
+    {
+//        List<ServiceInstance> instances = discoveryClient.getInstances("auth-service");
+//        //No load balancing algorithm is used here, so we are just taking the first instance
+//        // you can use load balancing algorithm like round robin or random if you want
+//        String hostname = instances.get(0).getHost();
+//        String port = String.valueOf(instances.get(0).getPort());
+
+        return webClientBuilder
+                .baseUrl(String.format("http://%s:%s/api/v1/internal/payment/create", "localhost", "8092"))
                 .filter(new LoggingWebClientFilter())
                 .build();
     }

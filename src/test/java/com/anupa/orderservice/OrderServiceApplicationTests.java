@@ -1,9 +1,9 @@
-package com.egov.profileservice;
+package com.anupa.orderservice;
 
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class SocialServiceApplicationTests {
+class OrderServiceApplicationTests {
 
     //@Test
     void contextLoads() {

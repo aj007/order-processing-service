@@ -1,11 +1,17 @@
-package com.egov.profileservice;
+package com.anupa.orderservice;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 public class TokenService
@@ -15,42 +21,37 @@ public class TokenService
     @Autowired
     private ApplicationContext ctx;
 
-    public Principal validateToken(String token)
+    public String validateToken(String token)
     {
 
         log.info("TokenService.validateToken() called with token: " + token);
 
         WebClient authValidateWebClient = ctx.getBean("authValidateWebClient", WebClient.class);
-
         log.info("Calling auth-service to validate token: " + token);
         // forward a request to the auth service for validation
-        Principal authResponse = authValidateWebClient.get()
+        String authResponse = authValidateWebClient.get()
                 .header("Authorization", token)
                 .retrieve()
-                .bodyToMono(Principal.class)
+                .bodyToMono(String.class)// bodyToFlux
                 .block(); // Thread is Blocked until the response is received | SYNC
+        // THREAD will pause at this point till a response is received
 
         log.info("Response from auth-service: " + authResponse);
+        return authResponse;
+    }
 
-        if (authResponse.getState().equals("VALID"))
+    String getAuthCookieValue(HttpServletRequest request)
+    {
+        List<Cookie> cookies = new ArrayList<>();
+
+        if(!(request.getCookies() == null))
         {
-            log.info("Token is valid");
-            return authResponse;
-        }
-        else if (authResponse.getState().equals("INVALID"))
-        {
-            log.info("Token is invalid");
-            return authResponse;
-        }
-        else
-        {
-            log.info("Error in auth-service: " + authResponse);
-            throw new RuntimeException("Error in auth-service: " + authResponse);
+            cookies = List.of(request.getCookies());
         }
 
-        // if the token is valid, return true
-        // else return false
-        //return null;
+        Optional<Cookie> authcookie =  cookies.stream().filter(cookie -> cookie.getName().equals("AUTH-TOKEN")).findFirst();
+
+        return authcookie.map(Cookie::getValue).orElse(null);
     }
 
 

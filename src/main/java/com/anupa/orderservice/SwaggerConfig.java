@@ -1,4 +1,4 @@
-package com.egov.profileservice;
+package com.anupa.orderservice;
 
 
 import io.swagger.v3.oas.models.OpenAPI;
@@ -15,8 +15,8 @@ public class SwaggerConfig {
                 return new OpenAPI()
                         .info(
                                 new Info()
-                                        .title("Social-Service Rest Api")
-                                        .description("Rest Api for Social Service of Egov")
+                                        .title("Order-Service Rest Api")
+                                        .description("Rest Api for Order Service of msa program")
                                         .version("1.0"));
         }
 }

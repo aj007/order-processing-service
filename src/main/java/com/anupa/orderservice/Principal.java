@@ -1,4 +1,4 @@
-package com.egov.profileservice;
+package com.anupa.orderservice;
 
 import lombok.Getter;
 import lombok.Setter;
