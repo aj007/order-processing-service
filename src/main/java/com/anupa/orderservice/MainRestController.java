@@ -62,27 +62,46 @@ public class MainRestController
                 // SET A COOKIE IN THE RESPONSE
                 Cookie orderStage = new Cookie("order-1", io.opentelemetry.api.trace.Span.current().getSpanContext().getTraceId());
                 orderStage.setMaxAge(60);
-                redisTemplate.opsForValue().set(orderStage.getValue(), "Order received "+orderSaved.getId()+" processing payment");
 
+                redisTemplate.opsForValue().set(orderStage.getValue(), "Order received for "+orderSaved.getId()+", checking inventory ");
                 //forward request to payment-service for payment [ service-fee ] creation
-                WebClient paymentCreateWebClient = (WebClient) applicationContext.getBean("paymentCreateWebClient");
-                paymentCreateWebClient.post().
-                        uri("/"+orderSaved.getId()+"/"+(orderSaved.getTotalAmount()/10)).
+                WebClient inventoryCheckWebClient = (WebClient) applicationContext.getBean("inventoryCheckWebClient");
+                inventoryCheckWebClient.get().
+                        uri("/"+orderSaved.getProductId()+"/availability").
                         header("Authorization", token.get()).
                         retrieve().
                         bodyToMono(String.class). // ASYNC HANDLER LOGIC STARTS FROM THE NEXT LINE - WILL BE EXECUTED IN A SEPARATE THREAD
                         subscribe( response -> {
 
-                    logger.info("Response from payment-service for order {}: is {} ",orderSaved.getId(),response);
-                    redisTemplate.opsForValue().set(orderStage.getValue(),"Payment completed for order "+orderSaved.getId()+" with PAYMENT_ID_"+response+" TRANSACTION COMPLETE");
+                    logger.info("Response from inventory-service for order {}: is {} ",orderSaved.getId(),response);
+                    redisTemplate.opsForValue().set(orderStage.getValue(),"Inventory available for order "+orderSaved.getId()+" with PAYMENT_ID_"+response+" TRANSACTION COMPLETE");
                     // CACHE UPDATION TAKES PLACE HERE
 
+                    redisTemplate.opsForValue().set(orderStage.getValue(), "Order received "+orderSaved.getId()+" processing payment");
+
+                    //forward request to payment-service for payment [ service-fee ] creation
+                    WebClient paymentCreateWebClient = (WebClient) applicationContext.getBean("paymentCreateWebClient");
+                    paymentCreateWebClient.post().
+                            uri("/"+orderSaved.getId()+"/"+(orderSaved.getTotalAmount()/10)).
+                            header("Authorization", token.get()).
+                            retrieve().
+                            bodyToMono(String.class). // ASYNC HANDLER LOGIC STARTS FROM THE NEXT LINE - WILL BE EXECUTED IN A SEPARATE THREAD
+                            subscribe( responsePayment -> {
+
+                        logger.info("Response from payment-service for order {}: is {} ",orderSaved.getId(),responsePayment);
+                        redisTemplate.opsForValue().set(orderStage.getValue(),"Payment completed for order "+orderSaved.getId()+" with PAYMENT_ID_"+responsePayment+" TRANSACTION COMPLETE");
+                        // CACHE UPDATION TAKES PLACE HERE
+
+                    }, error -> {
+                        logger.error("Error in payment-service for project {}: ",orderSaved.getId(),error);
+                    }); // ASYNC HANDLER LOGIC ENDS HERE
+
                 }, error -> {
-                            logger.error("Error in payment-service for project {}: ",orderSaved.getId(),error);
+                    logger.error("Error in inventory-service for project {}: ",orderSaved.getId(),error);
                 }); // ASYNC HANDLER LOGIC ENDS HERE
 
                 httpServletResponse.addCookie(orderStage);
-                return ResponseEntity.ok("Order payment triggered with id: "+orderSaved.getId());
+                return ResponseEntity.ok("Order processing triggered with id: "+orderSaved.getId());
             }
             else
             {

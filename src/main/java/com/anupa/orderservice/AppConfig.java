@@ -45,5 +45,21 @@ public class AppConfig
                 .build();
     }
 
+    @Bean
+    @Scope("prototype")
+    public WebClient inventoryCheckWebClient(WebClient.Builder webClientBuilder)
+    {
+//        List<ServiceInstance> instances = discoveryClient.getInstances("auth-service");
+//        //No load balancing algorithm is used here, so we are just taking the first instance
+//        // you can use load balancing algorithm like round robin or random if you want
+//        String hostname = instances.get(0).getHost();
+//        String port = String.valueOf(instances.get(0).getPort());
+
+        return webClientBuilder
+                .baseUrl(String.format("http://%s:%s/api/v1/internal/check", "localhost", "8097"))
+                .filter(new LoggingWebClientFilter())
+                .build();
+    }
+
 
 }
