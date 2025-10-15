@@ -19,14 +19,14 @@ public class Producer
     @Autowired //DEPENDENCY INJECTION PROMISE FULFILLED AT RUNTIME
     private KafkaTemplate<String, String> kafkaTemplate ;
 
-    public void pubOrder(String type, UUID userid) throws JsonProcessingException // LOGIN | REGISTER
+    public void pubOrder(OrderEvent order) throws JsonProcessingException // LOGIN | REGISTER
     {
         // convert to JSON
         ObjectMapper objectMapper = new ObjectMapper();
-        //String datum =  objectMapper.writeValueAsString(socialEvent1);
+        String datum =  objectMapper.writeValueAsString(order);
 
        // logger.info(String.format("#### -> Producing message -> %s", datum));
-        this.kafkaTemplate.send(TOPIC,"order-key-1", "datum");
+        this.kafkaTemplate.send(TOPIC,"order-key-1", datum);
     }
 
 }

@@ -1,5 +1,6 @@
 package com.anupa.orderservice;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,12 +36,13 @@ public class MainRestController
     ApplicationContext applicationContext;
     @Autowired
     private View error;
+    @Autowired
+    private Producer producer;
 
     @PostMapping("order/create") // Secured Endpoint need JWT Token in Header
     ResponseEntity<?> createOrder(@RequestBody Order order,
                                    HttpServletRequest request,
-                                   HttpServletResponse httpServletResponse)
-    {
+                                   HttpServletResponse httpServletResponse) throws JsonProcessingException {
         logger.info("Order received");
         // TOKEN VALIDATION IS REQUIRED
         Optional<String> token =  Optional.ofNullable(tokenService.getAuthCookieValue(request));
@@ -56,7 +58,7 @@ public class MainRestController
             {
                 logger.info("Fresh order received");
                 logger.info("Proceeding with order processing {}: ",principal.get());
-                order.setStatus("CREATED");
+                order.setStatus("NEW");
                 Order orderSaved =  orderRepository.save(order);
                 logger.info("Saved order {}: ",order.getId());
                 // SET A COOKIE IN THE RESPONSE
@@ -64,6 +66,7 @@ public class MainRestController
                 orderStage.setMaxAge(60);
 
                 redisTemplate.opsForValue().set(orderStage.getValue(), "Order received for "+orderSaved.getId()+", checking inventory ");
+                producer.pubOrder(new OrderEvent(orderSaved.getId(),"NEW",io.opentelemetry.api.trace.Span.current().getSpanContext().getTraceId()));
                 //forward request to payment-service for payment [ service-fee ] creation
                 WebClient inventoryCheckWebClient = (WebClient) applicationContext.getBean("inventoryCheckWebClient");
                 inventoryCheckWebClient.get().
@@ -74,10 +77,15 @@ public class MainRestController
                         subscribe( response -> {
 
                     logger.info("Response from inventory-service for order {}: is {} ",orderSaved.getId(),response);
-                    redisTemplate.opsForValue().set(orderStage.getValue(),"Inventory available for order "+orderSaved.getId()+" with PAYMENT_ID_"+response+" TRANSACTION COMPLETE");
+                    redisTemplate.opsForValue().set(orderStage.getValue(),"Inventory available for order "+orderSaved.getId()+" with PAYMENT_ID_"+response+" processing payment");
                     // CACHE UPDATION TAKES PLACE HERE
 
-                    redisTemplate.opsForValue().set(orderStage.getValue(), "Order received "+orderSaved.getId()+" processing payment");
+                    //redisTemplate.opsForValue().set(orderStage.getValue(), "Order received "+orderSaved.getId()+" processing payment");
+                    try {
+                        producer.pubOrder(new OrderEvent(orderSaved.getId(),"INVENTORY_VERIFIED",io.opentelemetry.api.trace.Span.current().getSpanContext().getTraceId()));
+                    } catch (JsonProcessingException e) {
+                        throw new RuntimeException(e);
+                    }
 
                     //forward request to payment-service for payment [ service-fee ] creation
                     WebClient paymentCreateWebClient = (WebClient) applicationContext.getBean("paymentCreateWebClient");
@@ -91,16 +99,31 @@ public class MainRestController
                         logger.info("Response from payment-service for order {}: is {} ",orderSaved.getId(),responsePayment);
                         redisTemplate.opsForValue().set(orderStage.getValue(),"Payment completed for order "+orderSaved.getId()+" with PAYMENT_ID_"+responsePayment+" TRANSACTION COMPLETE");
                         // CACHE UPDATION TAKES PLACE HERE
+                        try {
+                            producer.pubOrder(new OrderEvent(orderSaved.getId(),"PAYMENT_PROCESSED",io.opentelemetry.api.trace.Span.current().getSpanContext().getTraceId()));
+                        } catch (JsonProcessingException e) {
+                            throw new RuntimeException(e);
+                        }
 
                     }, error -> {
                         logger.error("Error in payment-service for project {}: ",orderSaved.getId(),error);
                     }); // ASYNC HANDLER LOGIC ENDS HERE
 
+                    try {
+                        producer.pubOrder(new OrderEvent(orderSaved.getId(),"PAYMENT_PROCESSING",io.opentelemetry.api.trace.Span.current().getSpanContext().getTraceId()));
+                    } catch (JsonProcessingException e) {
+                        throw new RuntimeException(e);
+                    }
                 }, error -> {
                     logger.error("Error in inventory-service for project {}: ",orderSaved.getId(),error);
                 }); // ASYNC HANDLER LOGIC ENDS HERE
 
                 httpServletResponse.addCookie(orderStage);
+                try {
+                    producer.pubOrder(new OrderEvent(orderSaved.getId(),"INVENTORY_PROCESSING",io.opentelemetry.api.trace.Span.current().getSpanContext().getTraceId()));
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException(e);
+                }
                 return ResponseEntity.ok("Order processing triggered with id: "+orderSaved.getId());
             }
             else
